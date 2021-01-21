@@ -7,9 +7,10 @@ import (
 
 type Target struct {
 	// Can be a IP, IP:Port or URL
-	Address string
-	Timeout time.Duration
-	Count   int
+	Address  string
+	Timeout  time.Duration
+	Interval time.Duration
+	Count    int
 
 	// HTTP Probe only
 	Headers http.Header

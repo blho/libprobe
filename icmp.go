@@ -53,6 +53,9 @@ func (p *ICMPProber) Probe(target Target) (Result, error) {
 	if target.Timeout.Seconds() > 0 {
 		pinger.Timeout = target.Timeout
 	}
+	if target.Interval.Seconds() > 0 {
+		pinger.Interval = target.Interval
+	}
 	err = pinger.Run()
 	if err != nil {
 		return nil, err
