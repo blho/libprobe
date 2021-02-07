@@ -31,10 +31,13 @@ func (r ICMPResult) String() string {
 }
 
 type ICMPProber struct {
+	privileged bool
 }
 
-func NewICMPProber() *ICMPProber {
-	return &ICMPProber{}
+func NewICMPProber(privileged bool) *ICMPProber {
+	return &ICMPProber{
+		privileged: privileged,
+	}
 }
 
 func (p *ICMPProber) Kind() string {
@@ -49,6 +52,7 @@ func (p *ICMPProber) Probe(target Target) (Result, error) {
 	if err != nil {
 		return nil, err
 	}
+	pinger.SetPrivileged(p.privileged)
 	pinger.Count = target.GetCount()
 	if target.Timeout.Seconds() > 0 {
 		pinger.Timeout = target.Timeout
