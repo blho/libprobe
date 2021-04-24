@@ -71,7 +71,7 @@ func (p *HTTPProber) Probe(target Target) (Result, error) {
 	r := &HTTPResult{
 		Target: target,
 	}
-	req, err := http.NewRequest(http.MethodGet, target.Address, target.Body)
+	req, err := http.NewRequest(target.RequestMethod, target.Address, target.Body)
 	if err != nil {
 		return r, err
 	}

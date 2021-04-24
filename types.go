@@ -14,8 +14,9 @@ type Target struct {
 	Count    int
 
 	// HTTP Probe only
-	Headers http.Header
-	Body    io.Reader
+	RequestMethod string
+	Headers       http.Header
+	Body          io.Reader
 }
 
 func (t Target) GetCount() int {
