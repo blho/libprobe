@@ -14,7 +14,6 @@ import (
 type HTTPResult struct {
 	Target
 	Error              error
-	DNSError           error
 	DNSResolveTime     time.Duration
 	ConnectTime        time.Duration
 	TLSHandshakeTime   time.Duration
@@ -42,8 +41,8 @@ const (
 )
 
 func (r HTTPResult) String() string {
-	if r.Error != nil || r.DNSError != nil {
-		return fmt.Sprintf("Error: %s, DNS error: %s", r.Error, r.DNSError)
+	if r.Error != nil {
+		return fmt.Sprintf("Error: %s", r.Error)
 	}
 	if strings.HasPrefix(r.Address, "http://") {
 		return fmt.Sprintf(httpTemplate, r.DNSResolveTime, r.ConnectTime, r.TTFB, r.TransferTime, r.TotalTime)
@@ -51,9 +50,9 @@ func (r HTTPResult) String() string {
 		return fmt.Sprintf(httpsTemplate, r.DNSResolveTime, r.ConnectTime, r.TLSHandshakeTime, r.TTFB, r.TransferTime, r.TotalTime)
 	}
 
-	return fmt.Sprintf("Error: %s|%s; "+
+	return fmt.Sprintf("Error: %s; "+
 		"DNS Resolve: %s, Connect: %s, TLS Handshake: %s, TTFB: %s, Transfer: %s. Total: %s",
-		r.Error, r.DNSError,
+		r.Error,
 		r.DNSResolveTime, r.ConnectTime, r.TLSHandshakeTime, r.TTFB, r.TransferTime, r.TotalTime)
 }
 
@@ -72,7 +71,7 @@ func (p *HTTPProber) Probe(target Target) (Result, error) {
 	r := &HTTPResult{
 		Target: target,
 	}
-	req, err := http.NewRequest(http.MethodGet, target.Address, nil)
+	req, err := http.NewRequest(http.MethodGet, target.Address, target.Body)
 	if err != nil {
 		return r, err
 	}
@@ -82,7 +81,6 @@ func (p *HTTPProber) Probe(target Target) (Result, error) {
 	var (
 		dnsStartAt          time.Time
 		dnsDoneAt           time.Time
-		dnsError            error
 		connectStartAt      time.Time
 		connectGotAt        time.Time
 		connectDoneAt       time.Time
@@ -90,14 +88,13 @@ func (p *HTTPProber) Probe(target Target) (Result, error) {
 		tlsHandshakeStartAt time.Time
 		tlsHandshakeDoneAt  time.Time
 		transferDoneAt      time.Time
-		requestError        error
 	)
 	clientTrace := &httptrace.ClientTrace{
 		DNSStart: func(info httptrace.DNSStartInfo) { dnsStartAt = time.Now() },
 		DNSDone: func(info httptrace.DNSDoneInfo) {
 			dnsDoneAt = time.Now()
 			if info.Err != nil {
-				dnsError = info.Err
+				r.Error = info.Err
 			}
 		},
 		ConnectStart: func(_, _ string) {
@@ -112,7 +109,7 @@ func (p *HTTPProber) Probe(target Target) (Result, error) {
 		ConnectDone: func(net, addr string, err error) {
 			connectDoneAt = time.Now()
 			if err != nil {
-				requestError = err
+				r.Error = err
 			}
 		},
 		GotFirstResponseByte: func() { firstResponseByteAt = time.Now() },
@@ -131,7 +128,7 @@ func (p *HTTPProber) Probe(target Target) (Result, error) {
 	traceRequest := req.WithContext(httptrace.WithClientTrace(context.Background(), clientTrace))
 	resp, err := httpClient.Do(traceRequest)
 	if err != nil {
-		requestError = err
+		r.Error = err
 		return r, nil
 	}
 	responseBody, err := ioutil.ReadAll(resp.Body)
@@ -143,8 +140,6 @@ func (p *HTTPProber) Probe(target Target) (Result, error) {
 	resp.Body.Close()
 	r.ResponseStatusCode = resp.StatusCode
 
-	r.DNSError = dnsError
-	r.Error = requestError
 	r.DNSResolveTime = dnsDoneAt.Sub(dnsStartAt)
 	r.ConnectTime = connectDoneAt.Sub(connectStartAt)
 	r.TLSHandshakeTime = tlsHandshakeDoneAt.Sub(tlsHandshakeStartAt)

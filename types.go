@@ -1,6 +1,7 @@
 package libprobe
 
 import (
+	"io"
 	"net/http"
 	"time"
 )
@@ -14,6 +15,7 @@ type Target struct {
 
 	// HTTP Probe only
 	Headers http.Header
+	Body    io.Reader
 }
 
 func (t Target) GetCount() int {

@@ -3,7 +3,7 @@ package libprobe_test
 import (
 	"testing"
 
-	"github.com/oif/libprobe"
+	"github.com/blho/libprobe"
 
 	"github.com/stretchr/testify/require"
 )

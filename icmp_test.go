@@ -3,13 +3,13 @@ package libprobe_test
 import (
 	"testing"
 
-	"github.com/oif/libprobe"
+	"github.com/blho/libprobe"
 
 	"github.com/stretchr/testify/require"
 )
 
 func TestICMP(t *testing.T) {
-	prober := libprobe.NewICMPProber()
+	prober := libprobe.NewICMPProber(true)
 	r, err := prober.Probe(libprobe.Target{
 		Address: "1.1.1.1",
 		Count:   3,
