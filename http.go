@@ -114,7 +114,12 @@ func (p *HTTPProber) Probe(target Target) (Result, error) {
 		},
 		GotFirstResponseByte: func() { firstResponseByteAt = time.Now() },
 		TLSHandshakeStart:    func() { tlsHandshakeStartAt = time.Now() },
-		TLSHandshakeDone:     func(_ tls.ConnectionState, _ error) { tlsHandshakeDoneAt = time.Now() },
+		TLSHandshakeDone: func(_ tls.ConnectionState, err error) {
+			tlsHandshakeDoneAt = time.Now()
+			if err != nil {
+				r.Error = err
+			}
+		},
 	}
 	httpClient := &http.Client{
 		Timeout:   target.Timeout,
