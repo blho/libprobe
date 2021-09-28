@@ -14,7 +14,7 @@ func NewTCPProber() *TCPProber {
 }
 
 func (p *TCPProber) Kind() string {
-	return "TCP"
+	return KindTCP
 }
 
 type TCPResult struct {

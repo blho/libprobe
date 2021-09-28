@@ -64,7 +64,7 @@ func NewHTTPProber() *HTTPProber {
 }
 
 func (p *HTTPProber) Kind() string {
-	return "http"
+	return KindHTTP
 }
 
 func (p *HTTPProber) Probe(target Target) (Result, error) {

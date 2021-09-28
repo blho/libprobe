@@ -35,3 +35,8 @@ type Prober interface {
 	Kind() string
 	Probe(target Target) (Result, error)
 }
+
+const (
+	KindTCP  = "TCP"
+	KindHTTP = "HTTP"
+)
