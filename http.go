@@ -2,11 +2,9 @@ package libprobe
 
 import (
 	"context"
-	"crypto/tls"
 	"fmt"
 	"io/ioutil"
 	"net/http"
-	"net/http/httptrace"
 	"strings"
 	"time"
 )
@@ -78,49 +76,7 @@ func (p *HTTPProber) Probe(target Target) (Result, error) {
 	if target.Headers != nil {
 		req.Header = target.Headers
 	}
-	var (
-		dnsStartAt          time.Time
-		dnsDoneAt           time.Time
-		connectStartAt      time.Time
-		connectGotAt        time.Time
-		connectDoneAt       time.Time
-		firstResponseByteAt time.Time
-		tlsHandshakeStartAt time.Time
-		tlsHandshakeDoneAt  time.Time
-		transferDoneAt      time.Time
-	)
-	clientTrace := &httptrace.ClientTrace{
-		DNSStart: func(info httptrace.DNSStartInfo) { dnsStartAt = time.Now() },
-		DNSDone: func(info httptrace.DNSDoneInfo) {
-			dnsDoneAt = time.Now()
-			if info.Err != nil {
-				r.Error = info.Err
-			}
-		},
-		ConnectStart: func(_, _ string) {
-			connectStartAt = time.Now()
-			// Directly connect to IP
-			if dnsDoneAt.IsZero() {
-				dnsDoneAt = connectStartAt
-				dnsStartAt = connectStartAt
-			}
-		},
-		GotConn: func(_ httptrace.GotConnInfo) { connectGotAt = time.Now() },
-		ConnectDone: func(net, addr string, err error) {
-			connectDoneAt = time.Now()
-			if err != nil {
-				r.Error = err
-			}
-		},
-		GotFirstResponseByte: func() { firstResponseByteAt = time.Now() },
-		TLSHandshakeStart:    func() { tlsHandshakeStartAt = time.Now() },
-		TLSHandshakeDone: func(_ tls.ConnectionState, err error) {
-			tlsHandshakeDoneAt = time.Now()
-			if err != nil {
-				r.Error = err
-			}
-		},
-	}
+
 	httpClient := &http.Client{
 		Timeout:   target.Timeout,
 		Transport: &http.Transport{},
@@ -130,7 +86,8 @@ func (p *HTTPProber) Probe(target Target) (Result, error) {
 			return http.ErrUseLastResponse
 		},
 	}
-	traceRequest := req.WithContext(httptrace.WithClientTrace(context.Background(), clientTrace))
+	trace := &HTTPClientTrace{}
+	traceRequest := req.WithContext(trace.CreateContext(context.Background()))
 	resp, err := httpClient.Do(traceRequest)
 	if err != nil {
 		r.Error = err
@@ -140,16 +97,16 @@ func (p *HTTPProber) Probe(target Target) (Result, error) {
 	if err != nil {
 		return r, err
 	}
-	transferDoneAt = time.Now()
+	transferDoneAt := time.Now()
 	r.ResponseSize = len(responseBody)
 	resp.Body.Close()
 	r.ResponseStatusCode = resp.StatusCode
-
-	r.DNSResolveTime = dnsDoneAt.Sub(dnsStartAt)
-	r.ConnectTime = connectDoneAt.Sub(connectStartAt)
-	r.TLSHandshakeTime = tlsHandshakeDoneAt.Sub(tlsHandshakeStartAt)
-	r.TTFB = firstResponseByteAt.Sub(connectGotAt)
-	r.TransferTime = transferDoneAt.Sub(firstResponseByteAt)
-	r.TotalTime = transferDoneAt.Sub(dnsStartAt)
+	traceInfo := trace.TraceInfo()
+	r.DNSResolveTime = traceInfo.DNSLookup
+	r.ConnectTime = traceInfo.ConnTime
+	r.TLSHandshakeTime = traceInfo.TLSHandshake
+	r.TTFB = traceInfo.TTFB
+	r.TransferTime = transferDoneAt.Sub(traceInfo.FirstResponseByteAt)
+	r.TotalTime = transferDoneAt.Sub(traceInfo.RequestStartAt)
 	return r, nil
 }
