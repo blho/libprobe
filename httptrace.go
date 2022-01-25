@@ -18,6 +18,7 @@ type HTTPClientTrace struct {
 	tlsHandshakeDone     time.Time
 	gotConn              time.Time
 	gotFirstResponseByte time.Time
+	lastRequestWrote     time.Time
 	endTime              time.Time
 	gotConnInfo          httptrace.GotConnInfo
 }
@@ -26,7 +27,12 @@ const (
 	HTTPStepDNSLookup    = "DNS_LOOKUP"
 	HTTPStepConnect      = "CONNECT"
 	HTTPStepTLSHandshake = "TLS_HANDSHAKE"
+	HTTPStepWriteRequest = "WRITE_REQUEST"
 )
+
+func (t *HTTPClientTrace) SetEndTime(when time.Time) {
+	t.endTime = when
+}
 
 func (t *HTTPClientTrace) CreateContext(ctx context.Context) context.Context {
 	return httptrace.WithClientTrace(
@@ -39,6 +45,8 @@ func (t *HTTPClientTrace) CreateContext(ctx context.Context) context.Context {
 				t.dnsDone = time.Now()
 				if info.Err != nil {
 					t.failedOn = HTTPStepDNSLookup
+				} else {
+					t.failedOn = ""
 				}
 			},
 			ConnectStart: func(_, _ string) {
@@ -60,6 +68,8 @@ func (t *HTTPClientTrace) CreateContext(ctx context.Context) context.Context {
 				t.connectDone = time.Now()
 				if err != nil {
 					t.failedOn = HTTPStepConnect
+				} else {
+					t.failedOn = ""
 				}
 			},
 			GotFirstResponseByte: func() {
@@ -72,7 +82,21 @@ func (t *HTTPClientTrace) CreateContext(ctx context.Context) context.Context {
 				t.tlsHandshakeDone = time.Now()
 				if err != nil {
 					t.failedOn = HTTPStepTLSHandshake
+				} else {
+					t.failedOn = ""
 				}
+			},
+			WroteRequest: func(info httptrace.WroteRequestInfo) {
+				t.lastRequestWrote = time.Now()
+				if info.Err != nil {
+					t.failedOn = HTTPStepWriteRequest
+				} else {
+					t.failedOn = ""
+				}
+			},
+			PutIdleConn: func(_ error) {
+				// Not working when using HTTP2 or Transport.DisableKeepAlives=true(won't reuse connection)
+				t.endTime = time.Now()
 			},
 		},
 	)
@@ -95,8 +119,13 @@ type HTTPTraceInfo struct {
 	// TLSHandshake is a duration that TLS handshake took place.
 	TLSHandshake time.Duration
 
+	// RequestSendingTime is a duration that request wrote takes(may contains multiple retries).
+	RequestSendingTime time.Duration
+
 	// TTFB(TimeToFirstByte) is a duration that server took to respond first byte.
 	TTFB time.Duration
+
+	// WARNING: ResponseTime and TotalTime should be calculated after response end(all content received).
 
 	// ResponseTime is a duration since first response byte from server to
 	// request completion.
@@ -138,14 +167,6 @@ func (t HTTPClientTrace) TraceInfo() HTTPTraceInfo {
 		FirstResponseByteAt: t.gotFirstResponseByte,
 	}
 
-	// Calculate the total time accordingly,
-	// when connection is reused
-	if t.gotConnInfo.Reused {
-		ti.TotalTime = t.endTime.Sub(t.getConn)
-	} else {
-		ti.TotalTime = t.endTime.Sub(t.dnsStart)
-	}
-
 	// Only calculate on successful connections
 	if !t.connectDone.IsZero() {
 		ti.TCPConnTime = t.connectDone.Sub(t.dnsDone)
@@ -156,9 +177,23 @@ func (t HTTPClientTrace) TraceInfo() HTTPTraceInfo {
 		ti.ConnTime = t.gotConn.Sub(t.getConn)
 	}
 
+	if !t.tlsHandshakeDone.IsZero() {
+		ti.RequestSendingTime = t.lastRequestWrote.Sub(t.tlsHandshakeDone)
+	} else {
+		ti.RequestSendingTime = t.lastRequestWrote.Sub(t.gotConn)
+	}
+
 	// Only calculate on successful connections
 	if !t.gotFirstResponseByte.IsZero() {
 		ti.ResponseTime = t.endTime.Sub(t.gotFirstResponseByte)
+	}
+
+	// Calculate the total time accordingly,
+	// when connection is reused
+	if t.gotConnInfo.Reused {
+		ti.TotalTime = t.endTime.Sub(t.getConn)
+	} else {
+		ti.TotalTime = t.endTime.Sub(t.dnsStart)
 	}
 
 	// Capture remote address info when connection is non-nil
