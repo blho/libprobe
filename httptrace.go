@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"net"
 	"net/http/httptrace"
+	"sync"
 	"time"
 )
 
@@ -18,9 +19,11 @@ type HTTPClientTrace struct {
 	tlsHandshakeDone     time.Time
 	gotConn              time.Time
 	gotFirstResponseByte time.Time
-	lastRequestWrote     time.Time
 	endTime              time.Time
 	gotConnInfo          httptrace.GotConnInfo
+
+	lastRequestWrote time.Time
+	requestWroteLock sync.RWMutex
 }
 
 const (
@@ -87,6 +90,8 @@ func (t *HTTPClientTrace) CreateContext(ctx context.Context) context.Context {
 				}
 			},
 			WroteRequest: func(info httptrace.WroteRequestInfo) {
+				t.requestWroteLock.Lock()
+				defer t.requestWroteLock.Unlock()
 				t.lastRequestWrote = time.Now()
 				if info.Err != nil {
 					t.failedOn = HTTPStepWriteRequest
@@ -154,9 +159,8 @@ type HTTPTraceInfo struct {
 	FirstResponseByteAt time.Time
 }
 
-func (t HTTPClientTrace) TraceInfo() HTTPTraceInfo {
+func (t *HTTPClientTrace) TraceInfo() HTTPTraceInfo {
 	ti := HTTPTraceInfo{
-		FailedStep:          t.failedOn,
 		DNSLookup:           t.dnsDone.Sub(t.dnsStart),
 		TLSHandshake:        t.tlsHandshakeDone.Sub(t.tlsHandshakeStart),
 		TTFB:                t.gotFirstResponseByte.Sub(t.gotConn),
@@ -177,11 +181,14 @@ func (t HTTPClientTrace) TraceInfo() HTTPTraceInfo {
 		ti.ConnTime = t.gotConn.Sub(t.getConn)
 	}
 
+	t.requestWroteLock.RLock()
 	if !t.tlsHandshakeDone.IsZero() {
 		ti.RequestSendingTime = t.lastRequestWrote.Sub(t.tlsHandshakeDone)
 	} else {
 		ti.RequestSendingTime = t.lastRequestWrote.Sub(t.gotConn)
 	}
+	ti.FailedStep = t.failedOn
+	t.requestWroteLock.RUnlock()
 
 	// Only calculate on successful connections
 	if !t.gotFirstResponseByte.IsZero() {
