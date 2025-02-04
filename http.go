@@ -14,22 +14,23 @@ const (
 )
 
 type HTTPExtention struct {
-	// HTTP 特定的参数
-	Method  string
-	Headers http.Header
-	Body    []byte
+	// HTTP-specific parameters
+	Method  string      // HTTP method (GET, POST, etc.)
+	Headers http.Header // Request headers
+	Body    []byte      // Request body
 }
 
+// HTTPResult contains detailed timing information for HTTP requests
 type HTTPResult struct {
 	BaseResult[HTTPExtention]
-	DNSResolveTime   time.Duration
-	ConnectTime      time.Duration
-	TLSHandshakeTime time.Duration
-	TTFB             time.Duration
-	TransferTime     time.Duration
-	StatusCode       int
-	ResponseSize     int
-	ResponseBody     []byte
+	DNSResolveTime   time.Duration // DNS lookup time
+	ConnectTime      time.Duration // TCP connection time
+	TLSHandshakeTime time.Duration // TLS handshake time
+	TTFB             time.Duration // Time to first byte
+	TransferTime     time.Duration // Content transfer time
+	StatusCode       int           // HTTP status code
+	ResponseSize     int           // Response body size in bytes
+	ResponseBody     []byte        // Raw response body
 }
 
 func (r HTTPResult) RTT() time.Duration {

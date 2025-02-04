@@ -6,17 +6,21 @@ import (
 	"time"
 )
 
-// Target 定义探测目标
+// Target defines a probe target with generic extension parameters
 type Target[T any] struct {
-	// Can be a IP, IP:Port or URL
-	Address  string
-	Timeout  time.Duration
+	// Address can be an IP, IP:Port or URL
+	Address string
+	// Timeout for the entire probe operation
+	Timeout time.Duration
+	// Interval between multiple probes
 	Interval time.Duration
-	Count    int
+	// Number of probes to send
+	Count int
 
+	// Extension parameters specific to each probe type
 	Extention T
 
-	// DEPRECATED: move to Extention
+	// DEPRECATED: These fields will be moved to respective Extensions
 	RequestMethod string
 	Headers       http.Header
 	Body          io.Reader
@@ -29,25 +33,28 @@ func (t Target[T]) GetCount() int {
 	return t.Count
 }
 
-// Result 定义探测结果接口
+// Result defines the interface for probe results
 type Result[T any] interface {
-	// 基础结果接口
+	// RTT returns the round-trip time of the probe
 	RTT() time.Duration
+	// String returns a human-readable representation of the result
 	String() string
-	// 获取原始目标
+	// GetTarget returns the original probe target
 	GetTarget() Target[T]
-	// 是否成功
+	// IsSuccess returns whether the probe was successful
 	IsSuccess() bool
-	// 获取错误信息
+	// Error returns any error that occurred during probing
 	Error() error
 }
 
 // BaseResult 提供基础结果实现
 type BaseResult[T any] struct {
-	Target   Target[T]
-	Success  bool
-	Err      error
-	Duration time.Duration
+	Target    Target[T]
+	Success   bool
+	Err       error
+	Duration  time.Duration
+	StartTime time.Time
+	EndTime   time.Time
 }
 
 func (r BaseResult[T]) RTT() time.Duration {
@@ -64,6 +71,15 @@ func (r BaseResult[T]) IsSuccess() bool {
 
 func (r BaseResult[T]) Error() error {
 	return r.Err
+}
+
+func (r *BaseResult[T]) start() {
+	r.StartTime = time.Now()
+}
+
+func (r *BaseResult[T]) end() {
+	r.EndTime = time.Now()
+	r.Duration = r.EndTime.Sub(r.StartTime)
 }
 
 // Prober 定义探测器接口

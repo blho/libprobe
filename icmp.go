@@ -19,37 +19,23 @@ const (
 	KindICMP         = "ICMP"
 )
 
-// IcmpID ICMP Echo Unique ID for each coroutine
+// IcmpID manages unique ICMP Echo identifiers for concurrent probes
 type IcmpID struct {
-	icmpID int32
+	counter uint32
 }
 
-// Get ICMP Echo Unique ID
-func (c *IcmpID) Get() int32 {
-	for {
-		val := atomic.LoadInt32(&c.icmpID)
-		// Init
-		if val == 0 {
-			atomic.StoreInt32(&c.icmpID, 1)
-			val = 1
-		}
-		// Reset Counter
-		if atomic.CompareAndSwapInt32(&c.icmpID, 65500, 2) {
-			return 1
-		}
-		if atomic.CompareAndSwapInt32(&c.icmpID, val, val+1) {
-			return val
-		}
-	}
+// Get returns a unique ICMP Echo identifier
+func (c *IcmpID) Get() uint16 {
+	return uint16(atomic.AddUint32(&c.counter, 1) % 65535)
 }
 
-// ICMPExtention 定义 ICMP 探测的特定参数
+// ICMPExtention defines ICMP-specific probe parameters
 type ICMPExtention struct {
-	TTL      int    // Time To Live
-	SourceIP string // 源 IP 地址
-	EnableV6 bool   // 是否启用 IPv6
-	Sequence int    // ICMP 序列号
-	Size     int    // ICMP 包大小
+	TTL      int    // Time To Live value
+	SourceIP string // Source IP address for the probe
+	EnableV6 bool   // Whether to use IPv6
+	Sequence int    // ICMP sequence number
+	Size     int    // ICMP packet size
 }
 
 type ICMPResult struct {

@@ -11,7 +11,7 @@ const (
 )
 
 type TCPExtention struct {
-	// 可以添加 TCP 特定的参数
+	// Port specifies the TCP port to connect to
 	Port int
 }
 
@@ -20,6 +20,7 @@ type TCPResult struct {
 	ConnectTime time.Duration
 }
 
+// RTT returns the total round-trip time for TCP connection
 func (r TCPResult) RTT() time.Duration {
 	return r.Duration
 }
