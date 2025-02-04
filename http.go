@@ -9,22 +9,31 @@ import (
 	"time"
 )
 
+const (
+	KindHTTP = "HTTP"
+)
+
+type HTTPExtention struct {
+	// HTTP 特定的参数
+	Method  string
+	Headers http.Header
+	Body    []byte
+}
+
 type HTTPResult struct {
-	Target
-	Error              error
-	DNSResolveTime     time.Duration
-	ConnectTime        time.Duration
-	TLSHandshakeTime   time.Duration
-	TTFB               time.Duration
-	TransferTime       time.Duration
-	TotalTime          time.Duration
-	ResponseStatusCode int
-	ResponseSize       int
-	ResponseBody       []byte
+	BaseResult[HTTPExtention]
+	DNSResolveTime   time.Duration
+	ConnectTime      time.Duration
+	TLSHandshakeTime time.Duration
+	TTFB             time.Duration
+	TransferTime     time.Duration
+	StatusCode       int
+	ResponseSize     int
+	ResponseBody     []byte
 }
 
 func (r HTTPResult) RTT() time.Duration {
-	return r.TotalTime
+	return r.Duration
 }
 
 const (
@@ -39,23 +48,22 @@ const (
 )
 
 func (r HTTPResult) String() string {
-	if r.Error != nil {
-		return fmt.Sprintf("Error: %s", r.Error)
+	if err := r.Error(); err != nil {
+		return fmt.Sprintf("Error: %s", err)
 	}
-	if strings.HasPrefix(r.Address, "http://") {
-		return fmt.Sprintf(httpTemplate, r.DNSResolveTime, r.ConnectTime, r.TTFB, r.TransferTime, r.TotalTime)
-	} else if strings.HasPrefix(r.Address, "https://") {
-		return fmt.Sprintf(httpsTemplate, r.DNSResolveTime, r.ConnectTime, r.TLSHandshakeTime, r.TTFB, r.TransferTime, r.TotalTime)
+	if strings.HasPrefix(r.Target.Address, "http://") {
+		return fmt.Sprintf(httpTemplate, r.DNSResolveTime, r.ConnectTime, r.TTFB, r.TransferTime, r.Duration)
+	} else if strings.HasPrefix(r.Target.Address, "https://") {
+		return fmt.Sprintf(httpsTemplate, r.DNSResolveTime, r.ConnectTime, r.TLSHandshakeTime, r.TTFB, r.TransferTime, r.Duration)
 	}
 
 	return fmt.Sprintf("Error: %s; "+
 		"DNS Resolve: %s, Connect: %s, TLS Handshake: %s, TTFB: %s, Transfer: %s. Total: %s",
-		r.Error,
-		r.DNSResolveTime, r.ConnectTime, r.TLSHandshakeTime, r.TTFB, r.TransferTime, r.TotalTime)
+		r.Error(),
+		r.DNSResolveTime, r.ConnectTime, r.TLSHandshakeTime, r.TTFB, r.TransferTime, r.Duration)
 }
 
-type HTTPProber struct {
-}
+type HTTPProber struct{}
 
 func NewHTTPProber() *HTTPProber {
 	return &HTTPProber{}
@@ -65,48 +73,62 @@ func (p *HTTPProber) Kind() string {
 	return KindHTTP
 }
 
-func (p *HTTPProber) Probe(target Target) (Result, error) {
+func (p *HTTPProber) Probe(target Target[HTTPExtention]) (Result[HTTPExtention], error) {
 	r := &HTTPResult{
-		Target: target,
+		BaseResult: BaseResult[HTTPExtention]{
+			Target: target,
+		},
 	}
-	req, err := http.NewRequest(target.RequestMethod, target.Address, target.Body)
+
+	method := target.Extention.Method
+	if method == "" {
+		method = "GET"
+	}
+
+	req, err := http.NewRequest(method, target.Address, nil)
 	if err != nil {
-		return r, err
+		r.Err = err
+		return r, nil
 	}
-	if target.Headers != nil {
-		req.Header = target.Headers
+
+	if target.Extention.Headers != nil {
+		req.Header = target.Extention.Headers
 	}
 
 	httpClient := &http.Client{
 		Timeout:   target.Timeout,
 		Transport: &http.Transport{},
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			// always refuse to follow redirects, visit does that
-			// manually if required.
 			return http.ErrUseLastResponse
 		},
 	}
+
 	trace := &HTTPClientTrace{}
 	traceRequest := req.WithContext(trace.CreateContext(context.Background()))
+
 	resp, err := httpClient.Do(traceRequest)
 	if err != nil {
-		r.Error = err
+		r.Err = err
 		return r, nil
 	}
+	defer resp.Body.Close()
+
 	responseBody, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		return r, err
 	}
+
 	transferDoneAt := time.Now()
 	r.ResponseSize = len(responseBody)
-	resp.Body.Close()
-	r.ResponseStatusCode = resp.StatusCode
+	r.StatusCode = resp.StatusCode
+
 	traceInfo := trace.TraceInfo()
 	r.DNSResolveTime = traceInfo.DNSLookup
 	r.ConnectTime = traceInfo.ConnTime
 	r.TLSHandshakeTime = traceInfo.TLSHandshake
 	r.TTFB = traceInfo.TTFB
 	r.TransferTime = transferDoneAt.Sub(traceInfo.FirstResponseByteAt)
-	r.TotalTime = transferDoneAt.Sub(traceInfo.RequestStartAt)
+	r.Duration = transferDoneAt.Sub(traceInfo.RequestStartAt)
+
 	return r, nil
 }

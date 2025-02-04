@@ -6,8 +6,32 @@ import (
 	"time"
 )
 
-type TCPProber struct {
+const (
+	KindTCP = "TCP"
+)
+
+type TCPExtention struct {
+	// 可以添加 TCP 特定的参数
+	Port int
 }
+
+type TCPResult struct {
+	BaseResult[TCPExtention]
+	ConnectTime time.Duration
+}
+
+func (r TCPResult) RTT() time.Duration {
+	return r.Duration
+}
+
+func (r TCPResult) String() string {
+	if !r.Success {
+		return fmt.Sprintf("-> %s error: %s", r.Target.Address, r.Error())
+	}
+	return fmt.Sprintf("-> %s %s", r.Target.Address, r.RTT())
+}
+
+type TCPProber struct{}
 
 func NewTCPProber() *TCPProber {
 	return &TCPProber{}
@@ -17,32 +41,22 @@ func (p *TCPProber) Kind() string {
 	return KindTCP
 }
 
-type TCPResult struct {
-	Target
-	Error       error
-	ConnectTime time.Duration
-}
-
-func (r TCPResult) RTT() time.Duration {
-	return r.ConnectTime
-}
-
-func (r TCPResult) String() string {
-	return fmt.Sprintf("-> %s %s", r.Target.Address, r.RTT())
-}
-
-func (p *TCPProber) Probe(target Target) (Result, error) {
+func (p *TCPProber) Probe(target Target[TCPExtention]) (Result[TCPExtention], error) {
 	r := &TCPResult{
-		Target: target,
+		BaseResult: BaseResult[TCPExtention]{
+			Target: target,
+		},
 	}
-	// TODO: Add resolve
+
 	startAt := time.Now()
-	conn, err := net.DialTimeout("tcp", r.Address, r.Timeout)
+	conn, err := net.DialTimeout("tcp", target.Address, target.Timeout)
 	if err != nil {
-		r.Error = err
+		r.Err = err
 		return r, nil
 	}
-	_ = conn.Close()
-	r.ConnectTime = time.Since(startAt)
+	defer conn.Close()
+
+	r.Duration = time.Since(startAt)
+	r.Success = true
 	return r, nil
 }

@@ -1,10 +1,18 @@
 module github.com/blho/libprobe
 
-go 1.14
+go 1.23
+
+toolchain go1.23.4
 
 require (
-	github.com/go-ping/ping v0.0.0-20210407214646-e4e642a95741
 	github.com/stretchr/testify v1.7.0
-	golang.org/x/net v0.0.0-20210119194325-5f4716e94777 // indirect
-	golang.org/x/sys v0.0.0-20210119212857-b64e53b001e4 // indirect
+	github.com/syepes/network_exporter v0.0.0-20241111103729-676ac07a5776
+	golang.org/x/net v0.31.0
+)
+
+require (
+	github.com/davecgh/go-spew v1.1.0 // indirect
+	github.com/pmezard/go-difflib v1.0.0 // indirect
+	golang.org/x/sys v0.27.0 // indirect
+	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
