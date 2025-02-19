@@ -118,6 +118,10 @@ func (p *MTRProber) Probe(target Target[MTRExtention]) (Result[MTRExtention], er
 	for ttl := 1; ttl <= maxHops; ttl++ {
 		hop, err := p.probeHop(target, ttl)
 		if err != nil {
+			// 将探测失败视为丢包，记录一次发送但未收到响应
+			dummyStat := getOrCreateHopStat(hopStats, "")
+			dummyStat.ttl = ttl
+			dummyStat.sent++
 			continue
 		}
 
@@ -131,6 +135,9 @@ func (p *MTRProber) Probe(target Target[MTRExtention]) (Result[MTRExtention], er
 			for i := 0; i < target.GetCount()-1; i++ {
 				if hop, err := p.probeHop(target, ttl); err == nil {
 					stat.update(hop.LastRTT)
+				} else {
+					// 额外探测失败也视为丢包
+					stat.sent++
 				}
 			}
 			break
@@ -141,19 +148,20 @@ func (p *MTRProber) Probe(target Target[MTRExtention]) (Result[MTRExtention], er
 	hops := make([]MTRHop, 0, len(hopStats))
 	for _, stat := range hopStats {
 		mtrHop := MTRHop{
-			TTL:      stat.ttl,
-			Address:  stat.address,
-			LastRTT:  stat.lastRTT,
-			AvgRTT:   stat.avgRTT(),
-			BestRTT:  stat.bestRTT,
-			WorstRTT: stat.worstRTT,
-			Sent:     stat.sent,
-			Received: stat.received,
-			Loss:     stat.lossRate() * 100,
+			TTL:       stat.ttl,
+			Address:   stat.address,
+			LastRTT:   stat.lastRTT,
+			AvgRTT:    stat.avgRTT(),
+			BestRTT:   stat.bestRTT,
+			WorstRTT:  stat.worstRTT,
+			StdDevRTT: stat.stdDevRTT(),
+			Sent:      stat.sent,
+			Received:  stat.received,
+			Loss:      stat.lossRate() * 100,
 		}
 
-		// Resolve hostname if requested
-		if target.Extention.ResolvePtr {
+		// 只解析有效地址的主机名
+		if target.Extention.ResolvePtr && stat.address != "" {
 			names, err := net.LookupAddr(stat.address)
 			if err == nil && len(names) > 0 {
 				mtrHop.Hostname = names[0]
@@ -167,6 +175,7 @@ func (p *MTRProber) Probe(target Target[MTRExtention]) (Result[MTRExtention], er
 	sort.Sort(hopsByTTL(hops))
 	r.Hops = hops
 
+	// 即使未到达目标也返回结果，因为这是正常的 MTR 行为
 	r.Success = true
 	return r, nil
 }
